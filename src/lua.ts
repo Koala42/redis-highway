@@ -41,6 +41,7 @@ end
 -- 6. If completed routes is status hash length - 1 -> all were done and we can cleanup
 if current_fields >= (target + 1) then
     redis.call('DEL', KEYS[1], KEYS[2])
+    redis.call('XDEL', KEYS[3], ARGV[3])
     return 1 -- Cleanup, DONE
 end
 
