@@ -1,0 +1,38 @@
+{
+  "name": "@koala42/redis-highway",
+  "version": "0.1.0",
+  "description": "High performance redis queue",
+  "license": "MIT",
+  "author": {
+    "email": "stranavadavid@protonmail.com",
+    "name": "David Stranava",
+    "url": "https://github.com/stranavad"
+  },
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc",
+    "prepublish": "npm run build"
+  },
+  "keywords": [
+    "redis",
+    "queue",
+    "valkey",
+    "high-throughput"
+  ],
+  "dependencies": {
+    "ioredis": "^5.9.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}
