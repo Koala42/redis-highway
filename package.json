@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
@@ -26,7 +26,7 @@
     "high-throughput"
   ],
   "dependencies": {
-    "ioredis": "^5.9.1",
+    "ioredis": "^5.8.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
