@@ -8,7 +8,7 @@ export interface JobOptions {
 }
 
 
-export class Producer {
+export class Producer<T extends Record<string, unknown>> {
   private keys: KeyManager;
 
   constructor(private readonly redis: Redis, private readonly streamName: string) {
@@ -17,12 +17,13 @@ export class Producer {
 
   /**
    * Push message to queue
-   * @param payload - serialized string payload
+   * @param payload
    * @param targetGroups - target consumers
    * @param opts - Job options
    * @returns Created job ID (uuidv7)
    */
-  async push(payload: string, targetGroups: string[], opts?: JobOptions): Promise<string> {
+  async push(payload: T, targetGroups: string[], opts?: JobOptions): Promise<string> {
+    const serializedPayload = JSON.stringify(payload)
     const id = uuidv7()
     const ttl = opts?.ttl || null; // 24 hours in seconds
 
@@ -33,9 +34,9 @@ export class Producer {
 
     // Create job data
     if (ttl) {
-      pipeline.set(dataKey, payload, 'EX', ttl)
+      pipeline.set(dataKey, serializedPayload, 'EX', ttl)
     } else {
-      pipeline.set(dataKey, payload)
+      pipeline.set(dataKey, serializedPayload)
     }
 
     // Initialize job metadata - status

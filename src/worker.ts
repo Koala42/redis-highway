@@ -4,7 +4,7 @@ import { LUA_MARK_DONE } from "./lua";
 import { KeyManager } from "./keys";
 import { XReadGroupResponse, StreamMessage } from "./interfaces";
 
-export abstract class Worker<T = any> {
+export abstract class Worker<T extends Record<string, unknown>> {
   private isRunning = false;
   private activeCount = 0;
   private readonly events = new EventEmitter()
