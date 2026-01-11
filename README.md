@@ -3,6 +3,7 @@
 High performance Redis stream-based queue for Node.js. Supports Redis single instances and Valkey single instances
 
 ## Missing features ATM
+- Better gracefull shutdown handling
 - Automatic job data serialization with generic types as in Worker<T>
 - In worker process functions expose more than just data: T like job id and current status
 - Option to customize/enable/disable metrics
