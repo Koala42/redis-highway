@@ -1,6 +1,15 @@
 # @koala42/redis-highway
 
-High performance Redis stream-based queue for Node.js.
+High performance Redis stream-based queue for Node.js. Supports Redis single instances and Valkey single instances
+
+## Missing features ATM
+- Automatic job data serialization with generic types as in Worker<T>
+- In worker process functions expose more than just data: T like job id and current status
+- Option to customize/enable/disable metrics
+
+
+## Roadmap
+- Support redis cluster, that is probably possible only for job payloads and DLQ, since the stream is only one
 
 ## Installation
 
@@ -21,7 +30,7 @@ const producer = new Producer(redis, 'my-stream');
 
 // Send job
 await producer.push(
-  JSON.stringify({ hello: 'world' }), 
+  JSON.stringify({ hello: 'world' }), // Message serialization is not done automatically
   ['group-A', 'group-B'] // Target specific consumer groups
 );
 ```
@@ -32,8 +41,8 @@ await producer.push(
 import { Redis } from 'ioredis';
 import { Worker } from '@koala42/redis-highway';
 
-class MyWorker extends Worker {
-  async process(data: any) {
+class MyWorker extends Worker<T> {
+  async process(data: T) {
     console.log('Processing:', data);
     // throw new Error('fail'); // Automatic retry/DLQ logic
   }
@@ -56,8 +65,59 @@ const metrics = new Metrics(redis, 'my-stream');
 const payload = await metrics.getPrometheusMetrics(['group-A']);
 ```
 
-## Features
+## Usage with NestJS
 
+```typescript
+
+// Producer
+@Injectable()
+export class EntryService {
+  privater readonly producer: Producer;
+  
+  constructor(){
+    this.producer = new Producer(
+      new Redis(...), // Or reuse existing ioredis connection
+      'my-stream'
+    )
+  }
+  
+  public async sth(): Promise<void>{
+    await producer.push(
+      JSON.stringify({ hello: 'world' }), // Message serialization is not done automatically
+      ['group-A', 'group-B'] // Target specific consumer groups
+    );
+  }
+}
+
+
+// Processor
+@Injectable()
+export class ProcessorService extends Worker<T> implements OnModuleInit, OnModuleDestroy {
+  constructor(){
+    super(
+      new Redis(...), // or reuse existing redis conn
+      'group-A',
+      'my-stream',
+      50 // concurrency
+    )
+  }
+  
+  async onModuleInit(): Promise<void>{
+    await this.start()
+  }
+  
+  onModuleDestroy(){
+    this.stop()
+  }
+  
+  async process(data: T): Promise<void>{
+    console.log("Processing job", JSON.stringify(data))
+  }
+}
+````
+
+## Features
+- **Lightweight**: Uses light Lua scripts and pipelines wherever possible, making it highly concurrents for inserts and for processing as well, because of the reduced I/O load compared to BullMQ
 - **Granular Retries**: If one group fails, only that group retries.
 - **DLQ**: Dead Letter Queue support after max retries.
 - **Metrics**: Throughput, Waiting, DLQ, Prometheus export.

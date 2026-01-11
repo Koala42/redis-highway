@@ -21,13 +21,9 @@ export class Metrics {
     async getMetrics(groupNames: string[]): Promise<QueueMetrics> {
         const pipeline = this.redis.pipeline();
 
-        // 1. Stream Length
         pipeline.xlen(this.streamName);
-
-        // 2. DLQ Length
         pipeline.xlen(this.keys.getDlqStreamKey());
 
-        // 3. Throughput keys for current minute
         const timestamp = Date.now();
         groupNames.forEach(group => {
             pipeline.get(this.keys.getThroughputKey(group, timestamp));
@@ -39,7 +35,6 @@ export class Metrics {
             throw new Error("Pipeline execution failed");
         }
 
-        // Helper to safely extract result
         const getResult = (index: number) => {
             const [err, res] = results[index];
             if (err) throw err;
@@ -51,7 +46,6 @@ export class Metrics {
 
         const throughput: Record<string, number> = {};
         groupNames.forEach((group, index) => {
-            // Offset by 2 because first two are xlen calls
             const val = getResult(index + 2);
             throughput[group] = parseInt((val as string) || '0', 10);
         });

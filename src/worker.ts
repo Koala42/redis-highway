@@ -125,12 +125,11 @@ export abstract class Worker<T = any> {
   }
 
   private async handleFailure(uuid: string, msgId: string, currentRetries: number, errorMsg: string): Promise<void> {
-
-    // 1. ACK the failed message (we are done with THIS stream entry)
+    // 1. ACK the failed message - removes from stream later
     await this.redis.xack(this.streamName, this.groupName, msgId);
 
+    // If current retries is lower than max retries, enque it back for another run
     if (currentRetries < this.MAX_RETRIES) {
-      // 2a. RETRY: Re-queue to main stream targeting ONLY this group
       console.log(`[${this.groupName}] Retrying job ${uuid} (Attempt ${currentRetries + 1}/${this.MAX_RETRIES})`);
 
       const pipeline = this.redis.pipeline();
@@ -143,20 +142,19 @@ export abstract class Worker<T = any> {
         this.streamName,
         '*',
         'id', uuid,
-        'target', this.groupName, // Only target THIS group
+        'target', this.groupName, // Instead of all groups, target the failed one
         'retryCount', currentRetries + 1
       );
 
       await pipeline.exec();
 
     } else {
+      // If retries is larger than allowed, insert the job with all data to dead letter queue
       // 2b. DEAD LETTER QUEUE (DLQ)
       console.error(`[${this.groupName}] Job ${uuid} exhausted retries. Moving to DLQ.`);
 
       const dlqStream = `${this.streamName}:dlq`;
 
-      // We need the payload to store in DLQ permanently?
-      // Or just reference the key? Creating a self-contained DLQ entry is safer.
       const payload = await this.redis.get(this.keys.getJobDataKey(uuid));
 
       await this.redis.xadd(
@@ -169,18 +167,12 @@ export abstract class Worker<T = any> {
         'failedAt', Date.now()
       );
 
-      // We still run finalize to clean up atomic counters/status
-      // (Treat it as "done" for the main flow, even though it failed)
-      await this.finalize(uuid, msgId, true); // true = skip Lua DEL? No, finalize deletes keys if everyone is done.
-      // Actually, if we move to DLQ, we should probably let finalize clean up the hot keys.
-      // The DLQ entry contains the payload copy, so losing the hot key is fine.
+      // Delete job from stream and mark it as "done"
+      await this.finalize(uuid, msgId, true);
     }
   }
 
   private async finalize(messageUuid: string, msgId: string, fromError = false): Promise<void> {
-    // If we call finalize from error handler, we already ACKed inside handleFailure.
-    // But the Lua script does ACK too. It is idempotent so it's fine.
-
     const timestamp = Date.now()
     const statusKey = this.keys.getJobStatusKey(messageUuid);
     const dataKey = this.keys.getJobDataKey(messageUuid);
