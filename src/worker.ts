@@ -47,8 +47,14 @@ export abstract class Worker<T extends Record<string, unknown>> {
     this.fetchLoop()
   }
 
-  public stop(): void{
+  public async stop(): Promise<void> {
     this.isRunning = false;
+    this.events.emit('job_finished'); // Wake up fetch loop if it's waiting
+
+    // Wait for active jobs to finish
+    while (this.activeCount > 0) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
   }
 
   private async fetchLoop(): Promise<void> {

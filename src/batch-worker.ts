@@ -3,8 +3,7 @@ import { KeyManager } from "./keys";
 import Redis from "ioredis";
 import { StreamMessage, XReadGroupResponse } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
-import Stream from "stream";
-import { LUA_MARK_DONE } from "./lua";
+import { LUA_FINALIZE_COMPLEX } from "./lua";
 import { v7 as uuidv7 } from "uuid";
 
 export abstract class BatchWorker<T extends Record<string, unknown>> {
@@ -48,12 +47,13 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
     this.fetchLoop()
   }
 
-  // TODO: implement waiting for runnnig jobs
   public async stop(): Promise<void> {
-    return new Promise((resolve) => {
-      this.isRunning = false;
-      resolve()
-    })
+    this.isRunning = false;
+    this.events.emit('job_finished');
+
+    while (this.activeCount > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   }
 
   private async fetchLoop(): Promise<void> {
@@ -171,12 +171,16 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
       message.data = JSON.parse(data)
     })
 
-    const messagesData = messages.reduce((acc: T[], current) => {
-      if (current.data) {
-        acc.push(current.data)
+    const messagesData: T[] = [];
+    const messagesToFinalize: StreamMessageEntity<T>[] = [];
+
+    messages.forEach((message) => {
+      messagesToFinalize.push(message);
+
+      if (message.data) {
+        messagesData.push(message.data);
       }
-      return acc
-    }, [])
+    });
 
 
     // TODO improve error handling
@@ -186,7 +190,7 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
 
     try {
       await this.process(messagesData)
-      await this.finalize(messages)
+      await this.finalize(messagesToFinalize)
     } catch (err: any) {
       console.error(`[${this.groupName}] Jobs failed`, err)
       await this.handleFailure(messages, err.message)
@@ -244,24 +248,37 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
   }
 
   private async finalize(messages: StreamMessageEntity<T>[]): Promise<void> {
-    const pipeline = this.redis.pipeline()
+    if (messages.length === 0) return;
 
-    for (const message of messages) {
-      const timestamp = Date.now()
-      const statusKey = this.keys.getJobStatusKey(message.messageUuid);
-      const dataKey = this.keys.getJobDataKey(message.messageUuid);
-      const throughputKey = this.keys.getThroughputKey(this.groupName, timestamp);
-      const totalKey = this.keys.getTotalKey(this.groupName);
+    const pipeline = this.redis.pipeline();
+    const timestamp = Date.now();
+    const throughputKey = this.keys.getThroughputKey(this.groupName, timestamp);
+    const totalKey = this.keys.getTotalKey(this.groupName);
+
+    // 1. Batch xacks
+    const ids = messages.map(m => m.streamMessageId);
+    pipeline.xack(this.streamName, this.groupName, ...ids);
+
+    // 2. Batch metrics
+    pipeline.incrby(throughputKey, ids.length);
+    pipeline.expire(throughputKey, 86400);
+    pipeline.incrby(totalKey, ids.length);
+
+
+    // Lua scripts to only check if data should be deleted
+    for (const msg of messages) {
+      const statusKey = this.keys.getJobStatusKey(msg.messageUuid);
+      const dataKey = this.keys.getJobDataKey(msg.messageUuid);
 
       pipeline.eval(
-        LUA_MARK_DONE,
-        6,
-        statusKey, dataKey, this.streamName, this.groupName, throughputKey, totalKey,
-        this.groupName, timestamp, message.streamMessageId
-      )
+        LUA_FINALIZE_COMPLEX,
+        3,
+        statusKey, dataKey, this.streamName, // Keys
+        this.groupName, timestamp, msg.streamMessageId // args
+      );
     }
 
-    await pipeline.exec()
+    await pipeline.exec();
   }
 
   private getConsumerName(): string {

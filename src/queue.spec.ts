@@ -24,7 +24,7 @@ class TestWorker extends Worker<JobData> {
         concurrency: number = 1,
         blockTimeMs: number = 100
     ) {
-        super(redis, groupName, streamName, concurrency, blockTimeMs);
+        super(redis, groupName, streamName, concurrency, 3, blockTimeMs);
     }
 
     async process(data: any): Promise<void> {
@@ -61,7 +61,7 @@ describe('Redis Queue Integration', () => {
 
     afterEach(async () => {
         for (const w of workers) {
-            w.stop();
+            await w.stop();
         }
 
         await new Promise(r => setTimeout(r, 500));
@@ -232,7 +232,7 @@ describe('Redis Queue Integration', () => {
             workers.push(w1);
             await w1.start();
 
-            const id = await producer.push({id: 'msg-cleanup' }, ['group-A']);
+            const id = await producer.push({ id: 'msg-cleanup' }, ['group-A']);
 
             // Wait for processing
             await waitFor(() => w1.processedCount === 1);
@@ -257,7 +257,7 @@ describe('Redis Queue Integration', () => {
 
             await w1.start(); // Only start w1
 
-            const id = await producer.push( {id: 'msg-multi' }, ['group-A', 'group-B']);
+            const id = await producer.push({ id: 'msg-multi' }, ['group-A', 'group-B']);
 
             // Wait for w1 to process
             await waitFor(() => w1.processedCount === 1);
