@@ -8,7 +8,9 @@ import { v7 as uuidv7 } from 'uuid';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-class TestWorker extends Worker {
+type JobData = { id: string; }
+
+class TestWorker extends Worker<JobData> {
     public processedCount = 0;
     public lastProcessedId: string | null = null;
     public shouldFail = false;
@@ -46,7 +48,7 @@ class TestWorker extends Worker {
 
 describe('Redis Queue Integration', () => {
     let redis: Redis;
-    let producer: Producer;
+    let producer: Producer<JobData>;
     let streamName: string;
     let workers: TestWorker[] = [];
 
@@ -94,7 +96,7 @@ describe('Redis Queue Integration', () => {
             await w1.start();
             await w2.start();
 
-            const id = await producer.push(JSON.stringify({ id: 'msg-1' }), ['group-A', 'group-B']);
+            const id = await producer.push({ id: 'msg-1' }, ['group-A', 'group-B']);
 
             await waitFor(() => w1.processedCount === 1 && w2.processedCount === 1);
 
@@ -117,7 +119,7 @@ describe('Redis Queue Integration', () => {
             await wA.start();
             await wB.start();
 
-            await producer.push(JSON.stringify({ id: 'msg-only-a' }), ['group-A']);
+            await producer.push({ id: 'msg-only-a' }, ['group-A']);
 
             await waitFor(() => wA.processedCount === 1);
 
@@ -136,7 +138,7 @@ describe('Redis Queue Integration', () => {
             await wOk.start();
             await wFail.start();
 
-            await producer.push(JSON.stringify({ id: 'retry-test' }), ['group-Ok', 'group-Fail']);
+            await producer.push({ id: 'retry-test' }, ['group-Ok', 'group-Fail']);
 
             // Wait for wOk to finish and wFail to try at least twice (fail + success)
             await waitFor(() => wOk.processedCount === 1 && wFail.processedCount === 1, 8000);
@@ -158,7 +160,7 @@ describe('Redis Queue Integration', () => {
             workers.push(wDead);
             await wDead.start();
 
-            const id = await producer.push(JSON.stringify({ id: 'dlq-test' }), ['group-Dead']);
+            const id = await producer.push({ id: 'dlq-test' }, ['group-Dead']);
 
             await waitFor(async () => {
                 const len = await redis.xlen(`${streamName}:dlq`);
@@ -183,7 +185,7 @@ describe('Redis Queue Integration', () => {
             let metrics = await metricsService.getMetrics(['group-Metrics']);
             expect(metrics.dlqLength).toBe(0);
 
-            const id = await producer.push(JSON.stringify({ id: 'metrics-1' }), ['group-Metrics']);
+            const id = await producer.push({ id: 'metrics-1' }, ['group-Metrics']);
 
             await waitFor(() => w.processedCount === 1);
 
@@ -192,7 +194,7 @@ describe('Redis Queue Integration', () => {
 
             w.shouldFail = true;
             w.maxFails = 10;
-            await producer.push(JSON.stringify({ id: 'metrics-fail' }), ['group-Metrics']);
+            await producer.push({ id: 'metrics-fail' }, ['group-Metrics']);
 
             await waitFor(() => redis.xlen(`${streamName}:dlq`).then(len => len > 0));
 
@@ -207,8 +209,8 @@ describe('Redis Queue Integration', () => {
             workers.push(w);
             await w.start();
 
-            await producer.push(JSON.stringify({ id: 'prom-1' }), ['group-Prom']);
-            await producer.push(JSON.stringify({ id: 'prom-2' }), ['group-Prom']);
+            await producer.push({ id: 'prom-1' }, ['group-Prom']);
+            await producer.push({ id: 'prom-2' }, ['group-Prom']);
 
             await waitFor(() => w.processedCount === 2);
 
@@ -230,7 +232,7 @@ describe('Redis Queue Integration', () => {
             workers.push(w1);
             await w1.start();
 
-            const id = await producer.push(JSON.stringify({ id: 'msg-cleanup' }), ['group-A']);
+            const id = await producer.push({id: 'msg-cleanup' }, ['group-A']);
 
             // Wait for processing
             await waitFor(() => w1.processedCount === 1);
@@ -255,7 +257,7 @@ describe('Redis Queue Integration', () => {
 
             await w1.start(); // Only start w1
 
-            const id = await producer.push(JSON.stringify({ id: 'msg-multi' }), ['group-A', 'group-B']);
+            const id = await producer.push( {id: 'msg-multi' }, ['group-A', 'group-B']);
 
             // Wait for w1 to process
             await waitFor(() => w1.processedCount === 1);

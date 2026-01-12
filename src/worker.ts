@@ -3,19 +3,20 @@ import { EventEmitter } from "events";
 import { LUA_MARK_DONE } from "./lua";
 import { KeyManager } from "./keys";
 import { XReadGroupResponse, StreamMessage } from "./interfaces";
+import { StreamMessageEntity } from "./stream-message-entity";
 
 export abstract class Worker<T extends Record<string, unknown>> {
   private isRunning = false;
   private activeCount = 0;
   private readonly events = new EventEmitter()
   private keys: KeyManager;
-  private readonly MAX_RETRIES = 3;
 
   constructor(
     protected redis: Redis,
     protected groupName: string,
     protected streamName: string,
     protected concurrency: number = 1,
+    protected MAX_RETRIES = 3,
     protected blockTimeMs: number = 2000
   ) {
     this.events.setMaxListeners(100)
@@ -48,7 +49,7 @@ export abstract class Worker<T extends Record<string, unknown>> {
     this.isRunning = false;
   }
 
-  private async fetchLoop() {
+  private async fetchLoop(): Promise<void> {
     while (this.isRunning) {
       const freeSlots = this.concurrency - this.activeCount
 
@@ -89,38 +90,28 @@ export abstract class Worker<T extends Record<string, unknown>> {
 
 
   private async processInternal(msg: StreamMessage): Promise<void> {
-    const msgId = msg[0];
-    const messageFields: string[] = msg[1];
+    const streamMessage = new StreamMessageEntity(msg)
 
-    const fields: Record<string, string> = {};
-    for (let i = 0; i < messageFields.length; i += 2) {
-      fields[messageFields[i]] = messageFields[i + 1]
-    }
-
-    const messageUuid = fields['id'];
-    const routes = fields['target'];
-    const retryCount = parseInt(fields['retryCount'] || '0', 10);
-
-    if (!routes.includes(this.groupName)) {
-      await this.redis.xack(this.streamName, this.groupName, msgId)
+    if (!streamMessage.routes.includes(this.groupName)) {
+      await this.redis.xack(this.streamName, this.groupName, streamMessage.streamMessageId)
       return;
     }
 
     try {
-      const dataKey = this.keys.getJobDataKey(messageUuid);
+      const dataKey = this.keys.getJobDataKey(streamMessage.messageUuid);
       const payload = await this.redis.get(dataKey)
       if (!payload) {
         // Data missing or expired
-        await this.finalize(messageUuid, msgId)
+        await this.finalize(streamMessage.messageUuid, streamMessage.streamMessageId)
         return
       }
 
       await this.process(JSON.parse(payload) as T);
 
-      await this.finalize(messageUuid, msgId)
+      await this.finalize(streamMessage.messageUuid, streamMessage.streamMessageId)
     } catch (err: any) {
-      console.error(`[${this.groupName}] Job failed ${messageUuid}`, err)
-      await this.handleFailure(messageUuid, msgId, retryCount, err.message)
+      console.error(`[${this.groupName}] Job failed ${streamMessage.messageUuid}`, err)
+      await this.handleFailure(streamMessage.messageUuid, streamMessage.streamMessageId, streamMessage.retryCount, err.message)
     }
   }
 
@@ -153,12 +144,10 @@ export abstract class Worker<T extends Record<string, unknown>> {
       // 2b. DEAD LETTER QUEUE (DLQ)
       console.error(`[${this.groupName}] Job ${uuid} exhausted retries. Moving to DLQ.`);
 
-      const dlqStream = `${this.streamName}:dlq`;
-
       const payload = await this.redis.get(this.keys.getJobDataKey(uuid));
 
       await this.redis.xadd(
-        dlqStream,
+        this.keys.getDlqStreamKey(),
         '*',
         'id', uuid,
         'group', this.groupName,

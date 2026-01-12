@@ -40,6 +40,7 @@ export class Producer<T extends Record<string, unknown>> {
     }
 
     // Initialize job metadata - status
+    // TODO: improve target groups use groups join by "," instead of groups length
     pipeline.hset(statusKey, '__target', targetGroups.length)
     if (ttl) {
       pipeline.expire(statusKey, ttl)
