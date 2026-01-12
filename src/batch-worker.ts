@@ -5,12 +5,14 @@ import { StreamMessage, XReadGroupResponse } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import Stream from "stream";
 import { LUA_MARK_DONE } from "./lua";
+import { v7 as uuidv7 } from "uuid";
 
 export abstract class BatchWorker<T extends Record<string, unknown>> {
   private isRunning = false;
   private activeCount = 0;
   private readonly events = new EventEmitter();
   private keys: KeyManager;
+  private readonly consumerId = uuidv7()
 
   constructor(
     protected redis: Redis,
@@ -263,7 +265,7 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
   }
 
   private getConsumerName(): string {
-    return `${this.groupName}-${process.pid}`
+    return `${this.groupName}-${process.pid}-${this.consumerId}`
   }
 
   abstract process(data: T[]): Promise<void>
