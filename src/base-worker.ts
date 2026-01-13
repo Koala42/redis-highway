@@ -141,8 +141,12 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
 
     const messagesToDLQ: StreamMessageEntity<T>[] = []
 
+    let retryCountIncr = 0
+
     for (const message of messages) {
       if (message.retryCount < this._maxRetries) {
+        retryCountIncr++
+
         const newJobId = uuidv7();
 
         pipeline.xadd(
@@ -176,7 +180,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
           'group', this._groupName,
           'error', errorMessage,
           'payload', message.serializedData,
-          'failedAt', Date.now()
+          'failedAt', timestamp
         )
 
         const statusKey = this._keys.getJobStatusKey(message.messageUuid)
@@ -188,6 +192,12 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
         )
       }
     }
+
+    if(retryCountIncr){
+      const retryCountKey = this._keys.getRetriesKey(this._groupName, timestamp)
+      pipeline.incrby(retryCountKey, retryCountIncr)
+    }
+
 
     await pipeline.exec()
   }

@@ -73,6 +73,7 @@ export class Metrics {
         groupNames.forEach(group => {
             pipeline.get(this.keys.getThroughputKey(group, timestamp));
             pipeline.get(this.keys.getTotalKey(group));
+            pipeline.get(this.keys.getRetriesKey(group, timestamp))
         });
 
         const results = await pipeline.exec();
@@ -100,15 +101,20 @@ export class Metrics {
         );
 
         groupNames.forEach((group, index) => {
-            const baseIndex = 2 + (index * 2);
+            const baseIndex = 2 + (index * 3);
 
             const throughputVal = parseInt((getResult(baseIndex) as string) || '0', 10);
             const totalVal = parseInt((getResult(baseIndex + 1) as string) || '0', 10);
+            const retryCountVal = parseInt((getResult(baseIndex + 2) as string) || '0', 10);
 
             response.push(
                 `# HELP ${prefix}_throughput_1m Jobs processed in the last minute`,
                 `# TYPE ${prefix}_throughput_1m gauge`,
                 `${prefix}_throughput_1m{stream="${this.streamName}", group="${group}"} ${throughputVal}`,
+
+                `# HELP ${prefix}_retries_1m Retries in the last minute`,
+                `# TYPE ${prefix}_retries_1m gauge`,
+                `${prefix}_retries_1m{stream="${this.streamName}", group="${group}"} ${retryCountVal}`,
 
                 `# HELP ${prefix}_jobs_total Total jobs processed`,
                 `# TYPE ${prefix}_jobs_total counter`,

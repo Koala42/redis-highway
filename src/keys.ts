@@ -22,11 +22,19 @@ export class KeyManager {
     }
 
     /**
-     * Metrics Hash for storing throughput
+     * Metrics for storing throughput
      */
     getThroughputKey(groupName: string, timestamp: number): string {
         const minute = Math.floor(timestamp / 60000) * 60000;
         return `metrics:throughput:${this.streamName}:${groupName}:${minute}`;
+    }
+
+    /**
+     * Metrics - retries key
+     */
+    getRetriesKey(groupName: string, timestamp: number): string {
+        const minute = Math.floor(timestamp / 60000) * 60000;
+        return `metrics:retry-count:${this.streamName}:${groupName}:${minute}`;
     }
 
     /**

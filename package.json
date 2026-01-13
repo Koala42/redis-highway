@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
@@ -9,8 +9,8 @@
     "url": "https://github.com/stranavad"
   },
   "type": "commonjs",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": [
     "dist"
   ],
