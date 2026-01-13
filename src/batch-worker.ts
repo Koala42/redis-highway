@@ -9,18 +9,23 @@ import { v7 as uuidv7 } from "uuid";
 export abstract class BatchWorker<T extends Record<string, unknown>> {
   private isRunning = false;
   private activeCount = 0;
-  private readonly events = new EventEmitter();
   private keys: KeyManager;
+  private blockingRedis: Redis;
+  private readonly events = new EventEmitter();
   private readonly consumerId = uuidv7()
 
   constructor(
     protected redis: Redis,
     protected groupName: string,
     protected streamName: string,
-    protected batchSize = 10,
-    protected concurrency: number = 1,
+    protected batchSize = 10, // How many jobs are passed to the process function (max)
+    protected concurrency: number = 1, // How many concurrent loops should run
+    protected maxFetchSize: number = 20, // How many jobs are fetched at once from redis stream
     protected maxRetries = 3,
-    protected blockTimeMs: number = 2000,
+    protected blockTimeMs: number = 2_000, // How long should the blocking redis wait for logs from stream
+    protected maxFetchCount: number = 5_000,
+    protected claimIntervalMs: number = 60_000, // Check for stuck jobs every minute
+    protected minIdleTimeMs: number = 120_000, // Job considered stuck after 2 minutes
   ) {
     if (batchSize < 1) {
       throw new Error('Batch size cannot be less then 0')
@@ -28,6 +33,7 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
 
     this.events.setMaxListeners(100);
     this.keys = new KeyManager(streamName)
+    this.blockingRedis = this.redis.duplicate()
   }
 
   public async start(): Promise<void> {
@@ -45,14 +51,113 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
     }
 
     this.fetchLoop()
+    this.autoClaimLoop();
   }
 
   public async stop(): Promise<void> {
     this.isRunning = false;
     this.events.emit('job_finished');
 
+    if (this.blockingRedis) {
+      try {
+        await this.blockingRedis.quit();
+      } catch (e) {
+        // whatever
+      }
+    }
+
     while (this.activeCount > 0) {
       await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  private async autoClaimLoop(): Promise<void> {
+    while (this.isRunning) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, this.claimIntervalMs));
+        if (!this.isRunning) {
+          break;
+        }
+
+        let cursor = '0-0';
+        let continueClaiming = true;
+
+        while (continueClaiming && this.isRunning) {
+          const result = await this.redis.xautoclaim(
+            this.streamName,
+            this.groupName,
+            this.getConsumerName(),
+            this.minIdleTimeMs,
+            cursor,
+            'COUNT', this.batchSize
+          ) as [string, StreamMessage[]] | null;
+
+          if (!result || !result.length) {
+            continueClaiming = false;
+            break;
+          }
+
+          const [nextCursor, messages] = result;
+          cursor = nextCursor;
+
+          if (messages && messages.length > 0) {
+
+            const pipeline = this.redis.pipeline();
+
+            for (const msg of messages) {
+              const entity = new StreamMessageEntity<T>(msg);
+
+              pipeline.xack(this.streamName, this.groupName, entity.streamMessageId);
+
+              const statusKey = this.keys.getJobStatusKey(entity.messageUuid);
+              const timestamp = Date.now();
+              pipeline.eval(
+                LUA_FINALIZE_COMPLEX,
+                2,
+                statusKey, this.streamName,
+                this.groupName, timestamp, entity.streamMessageId
+              );
+
+              if (entity.retryCount < this.maxRetries) {
+                pipeline.xadd(
+                  this.streamName,
+                  '*',
+                  'id', entity.messageUuid,
+                  'target', entity.routes.join(','),
+                  'retryCount', entity.retryCount + 1,
+                  'data', entity.data ? JSON.stringify(entity.data) : ''
+                );
+
+                pipeline.hset(statusKey, '__target', entity.routes.length);
+              } else {
+                console.error(`[${this.groupName}] Job ${entity.messageUuid} run out of retries (stuck). Moving to DLQ`);
+                pipeline.xadd(
+                  this.keys.getDlqStreamKey(),
+                  '*',
+                  'id', entity.messageUuid,
+                  'group', this.groupName,
+                  'error', 'Stuck message recovered max retries',
+                  'payload', entity.data ? JSON.stringify(entity.data) : 'MISSING',
+                  'failedAt', Date.now()
+                );
+                pipeline.del(statusKey);
+              }
+            }
+            await pipeline.exec();
+          } else {
+            continueClaiming = false;
+          }
+
+          if (nextCursor === '0-0') {
+            continueClaiming = false;
+          }
+        }
+
+      } catch (e: any) {
+        if (this.isRunning) {
+          console.error(`[${this.groupName}] Auto claim err:`, e.message);
+        }
+      }
     }
   }
 
@@ -65,10 +170,11 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
         continue
       }
 
-      const itemsCount = freeSlots * this.batchSize;
+      const calculatedCount = freeSlots * this.batchSize;
+      const itemsCount = Math.min(calculatedCount, this.maxFetchCount);
 
       try {
-        const results = await this.redis.xreadgroup(
+        const results = await this.blockingRedis.xreadgroup(
           'GROUP', this.groupName, this.getConsumerName(),
           'COUNT', itemsCount,
           'BLOCK', this.blockTimeMs,
@@ -87,8 +193,10 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
         }
 
       } catch (err) {
-        console.error(`[${this.groupName}] Fetch Error: `, err)
-        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        if (this.isRunning) { // Quicker grace shutdown
+          console.error(`[${this.groupName}] Fetch Error: `, err)
+          await new Promise((resolve) => setTimeout(resolve, 1_000))
+        }
       }
     }
   }
@@ -131,68 +239,17 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
       await pipeline.exec()
     }
 
-    // If no messsages need to be process, return. Fires job finished event for another loop to pickup next logs
     if (!messages.length) {
       return
     }
 
-    // Get jobs data
-    const pipeline = this.redis.pipeline()
-    for (const message of messages) {
-      pipeline.get(this.keys.getJobDataKey(message.messageUuid))
-    }
-    const response = await pipeline.exec() as [Error | null, string | null][] | null;
-
-    // TODO: Add error handling
-    if (!response) {
-      return
-    }
-
-    // Parse job data into message entities (lol, titties)
-    messages.forEach((message, index) => {
-      const foundData = response[index] || null;
-
-      if (!foundData) {
-        return
-      }
-
-      const [error, data] = foundData
-
-      if (error) {
-        console.error(`[${this.groupName}] Failed getting job data err: `, error)
-        return
-      }
-
-      if (!data) {
-        console.error(`[${this.groupName}] Data not found for job`)
-        return
-      }
-
-      message.data = JSON.parse(data)
-    })
-
-    const messagesData: T[] = [];
-    const messagesToFinalize: StreamMessageEntity<T>[] = [];
-
-    messages.forEach((message) => {
-      messagesToFinalize.push(message);
-
-      if (message.data) {
-        messagesData.push(message.data);
-      }
-    });
-
-
-    // TODO improve error handling
-    if (!messagesData.length) {
-      return
-    }
+    const messagesData: T[] = messages.map((msg) => msg.data)
 
     try {
       await this.process(messagesData)
-      await this.finalize(messagesToFinalize)
+      await this.finalize(messages)
     } catch (err: any) {
-      console.error(`[${this.groupName}] Jobs failed`, err)
+      console.error(`[${this.groupName}] Processing failed`, err)
       await this.handleFailure(messages, err.message)
     }
   }
@@ -200,7 +257,7 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
   private async handleFailure(messages: StreamMessageEntity<T>[], errorMessage: string): Promise<void> {
     const pipeline = this.redis.pipeline()
 
-    // 1. ACK the failed message - removes from stream later (or rather, confirms we processed this specific delivery)
+    // ack
     for (const message of messages) {
       pipeline.xack(this.streamName, this.groupName, message.streamMessageId)
     }
@@ -208,24 +265,34 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
     const messagesToDlq: StreamMessageEntity<T>[] = [];
 
     for (const message of messages) {
-      if (message.retryCount < this.maxRetries) {
-        // Retry
-        console.log(`[${this.groupName}] Retrying job ${message.messageUuid} (Attempt ${message.retryCount + 1}/${this.maxRetries})`);
+      if (message.routes.includes(this.groupName)) {
+        if (message.retryCount < this.maxRetries && message.data) {
+          const payloadString = JSON.stringify(message.data);
 
-        // Refresh TTL
-        pipeline.expire(this.keys.getJobDataKey(message.messageUuid), 3600);
-        pipeline.expire(this.keys.getJobStatusKey(message.messageUuid), 3600);
+          pipeline.xadd(
+            this.streamName,
+            '*',
+            'id', message.messageUuid,
+            'target', this.groupName,
+            'retryCount', message.retryCount + 1,
+            'data', payloadString
+          );
+        } else {
+          console.error(`[${this.groupName}] Job ${message.messageUuid} run out of retries. Moving to DLQ`);
+          messagesToDlq.push(message);
 
-        pipeline.xadd(
-          this.streamName,
-          '*',
-          'id', message.messageUuid,
-          'target', this.groupName,
-          'retryCount', message.retryCount + 1
-        );
+          pipeline.xadd(
+            this.keys.getDlqStreamKey(),
+            '*',
+            'id', message.messageUuid,
+            'group', this.groupName,
+            'error', errorMessage,
+            'payload', message.data ? JSON.stringify(message.data) : 'MISSING',
+            'failedAt', Date.now()
+          )
+        }
       } else {
-        // DLQ
-        console.error(`[${this.groupName}] Job ${message.messageUuid} exhausted retries. Moving to DLQ.`);
+        console.error(`[${this.groupName}] Job ${message.messageUuid} failed but not routed to this group. Moving to DLQ.`);
         messagesToDlq.push(message);
 
         pipeline.xadd(
@@ -233,8 +300,8 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
           '*',
           'id', message.messageUuid,
           'group', this.groupName,
-          'error', errorMessage,
-          'payload', message.data ? JSON.stringify(message.data) : 'MISSING',
+          'error', `Failed but not routed to ${this.groupName}: ${errorMessage}`,
+          'payload', JSON.stringify(message.data),
           'failedAt', Date.now()
         )
       }
@@ -248,33 +315,31 @@ export abstract class BatchWorker<T extends Record<string, unknown>> {
   }
 
   private async finalize(messages: StreamMessageEntity<T>[]): Promise<void> {
-    if (messages.length === 0) return;
+    if (messages.length === 0) {
+      return
+    }
 
     const pipeline = this.redis.pipeline();
     const timestamp = Date.now();
     const throughputKey = this.keys.getThroughputKey(this.groupName, timestamp);
     const totalKey = this.keys.getTotalKey(this.groupName);
 
-    // 1. Batch xacks
     const ids = messages.map(m => m.streamMessageId);
     pipeline.xack(this.streamName, this.groupName, ...ids);
 
-    // 2. Batch metrics
     pipeline.incrby(throughputKey, ids.length);
     pipeline.expire(throughputKey, 86400);
     pipeline.incrby(totalKey, ids.length);
 
 
-    // Lua scripts to only check if data should be deleted
     for (const msg of messages) {
       const statusKey = this.keys.getJobStatusKey(msg.messageUuid);
-      const dataKey = this.keys.getJobDataKey(msg.messageUuid);
 
       pipeline.eval(
         LUA_FINALIZE_COMPLEX,
-        3,
-        statusKey, dataKey, this.streamName, // Keys
-        this.groupName, timestamp, msg.streamMessageId // args
+        2,
+        statusKey, this.streamName,
+        this.groupName, timestamp, msg.streamMessageId
       );
     }
 

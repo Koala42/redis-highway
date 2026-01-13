@@ -15,13 +15,6 @@ export class KeyManager {
     }
 
     /**
-     * Job data contains the job payload
-     */
-    getJobDataKey(id: string): string {
-        return `${this.streamName}:data:${id}`;
-    }
-
-    /**
      * Dead letter queue stream name
      */
     getDlqStreamKey(): string {

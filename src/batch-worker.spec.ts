@@ -24,7 +24,8 @@ class TestBatchWorker extends BatchWorker<JobData> {
         maxRetries = 3,
         blockTimeMs: number = 100
     ) {
-        super(redis, groupName, streamName, batchSize, concurrency, maxRetries, blockTimeMs);
+        // Fix argument order: batchSize, concurrency, maxFetchSize, maxRetries, blockTimeMs
+        super(redis, groupName, streamName, batchSize, concurrency, 20, maxRetries, blockTimeMs);
     }
 
     async process(data: JobData[]): Promise<void> {

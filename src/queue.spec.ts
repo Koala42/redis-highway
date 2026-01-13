@@ -22,9 +22,12 @@ class TestWorker extends Worker<JobData> {
         groupName: string,
         streamName: string,
         concurrency: number = 1,
-        blockTimeMs: number = 100
+        maxRetries: number = 3,
+        blockTimeMs: number = 100,
+        claimIntervalMs: number = 60000,
+        minIdleTimeMs: number = 300000
     ) {
-        super(redis, groupName, streamName, concurrency, 3, blockTimeMs);
+        super(redis, groupName, streamName, concurrency, maxRetries, blockTimeMs, claimIntervalMs, minIdleTimeMs);
     }
 
     async process(data: any): Promise<void> {
@@ -88,8 +91,8 @@ describe('Redis Queue Integration', () => {
 
     describe('Core Functionality', () => {
         it('Should deliver message to all target groups', async () => {
-            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 100);
-            const w2 = new TestWorker(redis, 'group-B', streamName, 1, 100);
+            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 3, 100);
+            const w2 = new TestWorker(redis, 'group-B', streamName, 1, 3, 100);
 
             workers.push(w1, w2);
 
@@ -112,8 +115,8 @@ describe('Redis Queue Integration', () => {
         });
 
         it('Should only deliver to targeted groups', async () => {
-            const wA = new TestWorker(redis, 'group-A', streamName, 1, 100);
-            const wB = new TestWorker(redis, 'group-B', streamName, 1, 100);
+            const wA = new TestWorker(redis, 'group-A', streamName, 1, 3, 100);
+            const wB = new TestWorker(redis, 'group-B', streamName, 1, 3, 100);
             workers.push(wA, wB);
 
             await wA.start();
@@ -128,8 +131,8 @@ describe('Redis Queue Integration', () => {
         });
 
         it('Should retry only the failed group', async () => {
-            const wOk = new TestWorker(redis, 'group-Ok', streamName, 1, 100);
-            const wFail = new TestWorker(redis, 'group-Fail', streamName, 1, 100);
+            const wOk = new TestWorker(redis, 'group-Ok', streamName, 1, 3, 100);
+            const wFail = new TestWorker(redis, 'group-Fail', streamName, 1, 3, 100);
 
             wFail.shouldFail = true;
             wFail.maxFails = 1; // Fail once, then succeed
@@ -153,7 +156,7 @@ describe('Redis Queue Integration', () => {
 
 
         it('Should move to DLQ after max retries', async () => {
-            const wDead = new TestWorker(redis, 'group-Dead', streamName, 1, 100);
+            const wDead = new TestWorker(redis, 'group-Dead', streamName, 1, 3, 100);
             wDead.shouldFail = true;
             wDead.maxFails = 10; // Fail forever (more than max retries which is 3)
 
@@ -176,7 +179,7 @@ describe('Redis Queue Integration', () => {
 
     describe('Metrics & Monitoring', () => {
         it('Should track throughput and queue size', async () => {
-            const w = new TestWorker(redis, 'group-Metrics', streamName, 1, 100);
+            const w = new TestWorker(redis, 'group-Metrics', streamName, 1, 3, 100);
             const metricsService = new Metrics(redis, streamName);
 
             workers.push(w);
@@ -203,7 +206,7 @@ describe('Redis Queue Integration', () => {
         });
 
         it('Should export Prometheus metrics', async () => {
-            const w = new TestWorker(redis, 'group-Prom', streamName, 1, 100);
+            const w = new TestWorker(redis, 'group-Prom', streamName, 1, 3, 100);
             const metricsService = new Metrics(redis, streamName);
 
             workers.push(w);
@@ -228,7 +231,7 @@ describe('Redis Queue Integration', () => {
 
     describe('Stream Cleanup', () => {
         it('Should delete message from stream after processing', async () => {
-            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 100);
+            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 3, 100);
             workers.push(w1);
             await w1.start();
 
@@ -251,8 +254,8 @@ describe('Redis Queue Integration', () => {
         });
 
         it('Should delete message from stream only after ALL groups processed it', async () => {
-            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 100);
-            const w2 = new TestWorker(redis, 'group-B', streamName, 1, 100);
+            const w1 = new TestWorker(redis, 'group-A', streamName, 1, 3, 100);
+            const w2 = new TestWorker(redis, 'group-B', streamName, 1, 3, 100);
             workers.push(w1, w2);
 
             await w1.start(); // Only start w1
@@ -279,5 +282,50 @@ describe('Redis Queue Integration', () => {
 
             expect(success).toBe(true);
         });
+    });
+
+    it('Should recover stuck messages via Auto-Claim', async () => {
+        const groupName = 'group-Recover';
+        // Start worker with short minIdleTime (e.g., 1000ms) to trigger claim quickly
+        // minIdleTimeMs = 1000. claimIntervalMs = 500 (check frequently)
+        const w = new TestWorker(redis, groupName, streamName, 1, 3, 100, 500, 1000);
+        workers.push(w);
+
+        // 1. Setup group manually
+        await redis.xgroup('CREATE', streamName, groupName, '0', 'MKSTREAM');
+
+        // 2. Push message
+        const id = await producer.push({ id: 'stuck-msg' }, [groupName]);
+
+        // 3. Simulate a consumer reading but crashing (no ACK)
+        // consumer name 'bad-consumer'
+        await redis.xreadgroup('GROUP', groupName, 'bad-consumer', 'COUNT', 1, 'STREAMS', streamName, '>');
+
+        // 4. Wait for minIdleTime (1000ms) + buffer
+        await new Promise(r => setTimeout(r, 1200));
+
+        // 5. Start our worker
+        await w.start();
+
+        // 6. Verify worker picks it up
+        await waitFor(() => w.processedCount === 1, 5000);
+
+        expect(w.processedCount).toBe(1);
+        expect(w.lastProcessedId).toBe('stuck-msg');
+
+        // Verify it was claimed (delivered to new consumer)
+        // We can check PEL or just trust processedCount
+        const pending = await redis.xpending(streamName, groupName);
+        // After processing, it should be ACKed, so pending count => 0 (if deleted)
+        // or if finalize runs, it deletes the message entirely.
+
+        // Wait for cleanup (finalize runs after process)
+        await waitFor(async () => {
+            const len = await redis.xlen(streamName);
+            return len === 0;
+        }, 2000);
+
+        const len = await redis.xlen(streamName);
+        expect(len).toBe(0);
     });
 });

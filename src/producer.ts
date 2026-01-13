@@ -28,16 +28,7 @@ export class Producer<T extends Record<string, unknown>> {
     const ttl = opts?.ttl || null; // 24 hours in seconds
 
     const pipeline = this.redis.pipeline()
-
-    const dataKey = this.keys.getJobDataKey(id);
     const statusKey = this.keys.getJobStatusKey(id);
-
-    // Create job data
-    if (ttl) {
-      pipeline.set(dataKey, serializedPayload, 'EX', ttl)
-    } else {
-      pipeline.set(dataKey, serializedPayload)
-    }
 
     // Initialize job metadata - status
     // TODO: improve target groups use groups join by "," instead of groups length
@@ -53,7 +44,9 @@ export class Producer<T extends Record<string, unknown>> {
       'id',
       id,
       'target',
-      targetGroups.join(',')
+      targetGroups.join(','),
+      'data',
+      serializedPayload
     )
 
     await pipeline.exec()
