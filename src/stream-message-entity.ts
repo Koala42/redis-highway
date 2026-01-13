@@ -8,6 +8,7 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
   private readonly _messageUuid: string; // Custom ID for referencing status hash obj
   private readonly _retryCount: number;
   private readonly _data: T;
+  private readonly _rawData: string;
 
   constructor(message: StreamMessage) {
     this._streamMessageId = message[0];
@@ -21,10 +22,15 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
     this._routes = this._fields['target'].split(',')
     this._retryCount = parseInt(this._fields['retryCount'] || '0', 10)
     this._data = JSON.parse(this._fields['data'])
+    this._rawData = this._fields['data']
   }
 
   get data(): T {
     return this._data
+  }
+
+  get serializedData(): string {
+    return this._rawData
   }
 
   get streamMessageId(): string {

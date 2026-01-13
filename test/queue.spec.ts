@@ -1,9 +1,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis';
-import { Producer } from './producer';
-import { Worker } from './worker';
-import { Metrics } from './metrics';
+import { Producer } from '../src/producer';
+import { Worker } from '../src/worker';
+import { Metrics } from '../src/metrics';
 import { v7 as uuidv7 } from 'uuid';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -27,7 +27,29 @@ class TestWorker extends Worker<JobData> {
         claimIntervalMs: number = 60000,
         minIdleTimeMs: number = 300000
     ) {
-        super(redis, groupName, streamName, concurrency, maxRetries, blockTimeMs, claimIntervalMs, minIdleTimeMs);
+        super(
+            redis,
+            {
+                groupName,
+                streamName,
+                concurrency
+            },
+            {
+                maxRetries,
+                blockTimeMs,
+                claimIntervalMs,
+                minIdleTimeMs,
+                collectMetrics: true
+            }
+        );
+    }
+
+    public async start(): Promise<void> {
+        return super.start();
+    }
+
+    public async stop(): Promise<void> {
+        return super.stop();
     }
 
     async process(data: any): Promise<void> {

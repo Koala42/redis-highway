@@ -9,6 +9,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/stream-message-entity.ts", "test/queue.spec.ts"],
   "exclude": ["node_modules", "**/*.test.ts"]
 }

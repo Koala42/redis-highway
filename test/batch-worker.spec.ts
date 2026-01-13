@@ -1,8 +1,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis';
-import { Producer } from './producer';
-import { BatchWorker } from './batch-worker';
+import { Producer } from '../src/producer';
+import { BatchWorker } from '../src/batch-worker';
 import { v7 as uuidv7 } from 'uuid';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -24,8 +24,31 @@ class TestBatchWorker extends BatchWorker<JobData> {
         maxRetries = 3,
         blockTimeMs: number = 100
     ) {
-        // Fix argument order: batchSize, concurrency, maxFetchSize, maxRetries, blockTimeMs
-        super(redis, groupName, streamName, batchSize, concurrency, 20, maxRetries, blockTimeMs);
+        super(
+            redis,
+            {
+                groupName,
+                streamName,
+                batchSize,
+                concurrency,
+                maxFetchCount: 20
+            },
+            {
+                maxRetries,
+                blockTimeMs,
+                claimIntervalMs: 120_000,
+                minIdleTimeMs: 120_000,
+                collectMetrics: true
+            }
+        );
+    }
+
+    public async start(): Promise<void> {
+        return super.start();
+    }
+
+    public async stop(): Promise<void> {
+        return super.stop();
     }
 
     async process(data: JobData[]): Promise<void> {
