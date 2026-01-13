@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
@@ -16,8 +16,7 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "test": "vitest run src/queue.spec.ts",
-    "test:all": "vitest run src",
+    "test:all": "vitest run test/queue.spec.ts test/batch-worker.spec.ts",
     "build": "npm run clean && tsc",
     "prepublish": "npm run build"
   },
