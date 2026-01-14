@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import { StreamMessage, BaseWorkerOptions, BaseWorkerControlOptions, defaultBaseWorkerControlOptions } from "./interfaces";
+import { StreamMessage, BaseWorkerOptions, BaseWorkerControlOptions, defaultBaseWorkerControlOptions, defaultBaseWorkerCustomMetrics, BaseWorkerCustomMetricsOptions } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import { BaseWorker } from "./base-worker";
 
@@ -8,9 +8,10 @@ export abstract class Worker<T extends Record<string, unknown>> extends BaseWork
   constructor(
     redis: Redis,
     options: BaseWorkerOptions,
-    controlOptions: BaseWorkerControlOptions = defaultBaseWorkerControlOptions
+    controlOptions: BaseWorkerControlOptions = defaultBaseWorkerControlOptions,
+    metricsOptions: BaseWorkerCustomMetricsOptions<T> = defaultBaseWorkerCustomMetrics
   ) {
-    super(redis, options, controlOptions)
+    super(redis, options, controlOptions, metricsOptions)
   }
 
   /**

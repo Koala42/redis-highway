@@ -2,9 +2,9 @@ import { EventEmitter } from "events";
 import { KeyManager } from "./keys";
 import { v7 as uuidv7 } from 'uuid'
 import Redis from "ioredis";
-import { BaseWorkerControlOptions, BaseWorkerOptions, StreamMessage, XReadGroupResponse } from "./interfaces";
+import { BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BaseWorkerOptions, StreamMessage, XReadGroupResponse } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
-import { LUA_FINALIZE } from "./lua";
+import { LUA_FINALIZE, LUA_FINALIZE_CUSTOM_METRIC } from "./lua";
 
 export abstract class BaseWorker<T extends Record<string, unknown>> {
   protected _isRunning = false;
@@ -21,11 +21,17 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
   protected readonly _maxRetries: number;
   protected readonly _blockTimeMs: number;
   protected readonly _claimIntervalMs: number;
-  protected readonly _minIdleTimeMs: number
-  protected readonly _collectMetrics: boolean
+  protected readonly _minIdleTimeMs: number;
+  protected readonly _collectMetrics: boolean;
+  protected readonly _finalIncrementMetricKey: ((item: T)  => string | null) | null
 
 
-  constructor(protected redis: Redis, options: BaseWorkerOptions, controlOptions: BaseWorkerControlOptions) {
+  constructor(
+    protected redis: Redis,
+    options: BaseWorkerOptions,
+    controlOptions: BaseWorkerControlOptions,
+    metricsOptions: BaseWorkerCustomMetricsOptions<T>
+  ) {
     this._events.setMaxListeners(100)
     this._groupName = options.groupName;
     this._streamName = options.streamName;
@@ -35,6 +41,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
     this._claimIntervalMs = controlOptions.claimIntervalMs;
     this._minIdleTimeMs = controlOptions.minIdleTimeMs;
     this._collectMetrics = controlOptions.collectMetrics;
+    this._finalIncrementMetricKey = metricsOptions.finalIncrementMetricKey ?? null;
     this._consumerName = `${this._groupName}-${this._consumerId}`
 
     this._keys = new KeyManager(options.streamName)
@@ -264,13 +271,23 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
 
     for (const msg of messages) {
       const statusKey = this._keys.getJobStatusKey(msg.messageUuid);
+      const customMetricKey = this._finalIncrementMetricKey ? this._finalIncrementMetricKey(msg.data) : null
 
-      pipeline.eval(
-        LUA_FINALIZE,
-        2,
-        statusKey, this._streamName,
-        this._groupName, timestamp, msg.streamMessageId
-      );
+      if(customMetricKey){
+        pipeline.eval(
+          LUA_FINALIZE_CUSTOM_METRIC,
+          3,
+          statusKey, this._streamName, customMetricKey,
+          this._groupName, timestamp, msg.streamMessageId
+        )
+      } else {
+        pipeline.eval(
+          LUA_FINALIZE,
+          2,
+          statusKey, this._streamName,
+          this._groupName, timestamp, msg.streamMessageId
+        );
+      }
     }
 
     await pipeline.exec();

@@ -1,3 +1,5 @@
+import { ChainableCommander } from "ioredis";
+
 export type StreamMessage = [string, string[]];
 export type XReadGroupResponse = [string, StreamMessage[]][];
 
@@ -14,6 +16,14 @@ export interface BaseWorkerControlOptions {
   claimIntervalMs: number;
   minIdleTimeMs: number;
   collectMetrics: boolean;
+}
+
+export interface BaseWorkerCustomMetricsOptions<T extends Record<string, unknown>> {
+  finalIncrementMetricKey?: ((item: T) => string | null) | null
+}
+
+export const defaultBaseWorkerCustomMetrics: BaseWorkerCustomMetricsOptions<{}> = {
+  finalIncrementMetricKey: null
 }
 
 export const defaultBaseWorkerControlOptions: BaseWorkerControlOptions = {
