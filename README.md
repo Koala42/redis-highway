@@ -27,11 +27,11 @@ import { Redis } from 'ioredis';
 import { Producer } from '@koala42/redis-highway';
 
 const redis = new Redis();
-const producer = new Producer(redis, 'my-stream');
+const producer = new Producer<{hello: string}>(redis, 'my-stream');
 
 // Send job
 await producer.push(
-  JSON.stringify({ hello: 'world' }), // Message serialization is not done automatically
+  { hello: 'world' }, // Automatic message serialization with generic type safety
   ['group-A', 'group-B'] // Target specific consumer groups
 );
 ```
@@ -74,17 +74,17 @@ const payload = await metrics.getPrometheusMetrics(['group-A']);
 @Injectable()
 export class EntryService {
   privater readonly producer: Producer;
-  
+
   constructor(){
     this.producer = new Producer(
       new Redis(...), // Or reuse existing ioredis connection
       'my-stream'
     )
   }
-  
+
   public async sth(): Promise<void>{
     await producer.push(
-      JSON.stringify({ hello: 'world' }), // Message serialization is not done automatically
+      { hello: 'world' }, // Message serialization is not done automatically
       ['group-A', 'group-B'] // Target specific consumer groups
     );
   }
@@ -102,15 +102,15 @@ export class ProcessorService extends Worker<T> implements OnModuleInit, OnModul
       50 // concurrency
     )
   }
-  
+
   async onModuleInit(): Promise<void>{
     await this.start()
   }
-  
+
   onModuleDestroy(){
     this.stop()
   }
-  
+
   async process(data: T): Promise<void>{
     console.log("Processing job", JSON.stringify(data))
   }
