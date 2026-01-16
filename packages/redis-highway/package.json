@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "test:all": "vitest run test/queue.spec.ts test/batch-worker.spec.ts",
+    "test": "vitest run test",
+    "test:all": "vitest run test",
     "build": "npm run clean && tsc",
     "prepublish": "npm run build"
   },
