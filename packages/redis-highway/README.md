@@ -1,4 +1,4 @@
-ack# @koala42/redis-highway
+# @koala42/redis-highway
 
 High performance Redis stream-based queue for Node.js. Supports Redis single instances and Valkey single instances.
 Designed for high throughput and massive concurrency with low overhead.

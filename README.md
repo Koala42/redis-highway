@@ -16,6 +16,6 @@ The core library offering:
 ## AI Usage Disclosure
 - AI will not be used for the development of the package, ever
 - AI may be used to do code reviews
-- AI is be used to write unit tests
+- AI is being used to write unit tests
 - AI is being used for writing documentation, READMEs and the website
 
