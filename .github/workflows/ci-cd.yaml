@@ -64,6 +64,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: packages/redis-highway/package-lock.json
 
+      - name: Install latest npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -71,4 +74,4 @@ jobs:
         run: npm run build
 
       - name: Publish
-        run: npm publish --provenance
+        run: npm publish --access public
