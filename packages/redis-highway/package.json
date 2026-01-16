@@ -1,12 +1,17 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
     "email": "stranavadavid@protonmail.com",
     "name": "David Stranava",
     "url": "https://github.com/stranavad"
+  },
+  "repository": {
+    "url": "https://github.com/Koala42/redis-highway",
+    "type": "github",
+    "directory": "packages/redis-highway"
   },
   "type": "commonjs",
   "main": "dist/src/index.js",
