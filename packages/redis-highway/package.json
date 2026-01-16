@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
@@ -10,19 +10,17 @@
   },
   "repository": {
     "url": "https://github.com/Koala42/redis-highway",
-    "type": "github",
-    "directory": "packages/redis-highway"
+    "type": "git"
   },
   "type": "commonjs",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/ndex.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
     "clean": "rimraf dist",
     "test": "vitest run test",
-    "test:all": "vitest run test",
     "build": "npm run clean && tsc",
     "prepublish": "npm run build"
   },
