@@ -23,10 +23,11 @@ export class KeyManager {
 
     /**
      * Metrics for storing throughput
+     * @param current - if true, takes throughput in the running minute, if false, takes -1 minute for closed throughput bucket
      */
-    getThroughputKey(groupName: string, timestamp: number): string {
-        const minute = Math.floor(timestamp / 60000) * 60000;
-        return `metrics:throughput:${this.streamName}:${groupName}:${minute}`;
+    getThroughputKey(groupName: string, timestamp: number, current: boolean = true): string {
+        const minute = Math.floor(timestamp / 60_000) * 60_000;
+        return `metrics:throughput:${this.streamName}:${groupName}:${current ? minute : minute - 60_000}`;
     }
 
     /**

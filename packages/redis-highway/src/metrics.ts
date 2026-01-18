@@ -18,7 +18,7 @@ export class Metrics {
      * Get current metrics for the queue
      * @param groupNames - List of consumer groups to fetch throughput for
      */
-    async getMetrics(groupNames: string[]): Promise<QueueMetrics> {
+    async getMetrics(groupNames: string[], current: boolean = false): Promise<QueueMetrics> {
         const pipeline = this.redis.pipeline();
 
         pipeline.xlen(this.streamName);
@@ -26,7 +26,7 @@ export class Metrics {
 
         const timestamp = Date.now();
         groupNames.forEach(group => {
-            pipeline.get(this.keys.getThroughputKey(group, timestamp));
+            pipeline.get(this.keys.getThroughputKey(group, timestamp, current));
         });
 
         const results = await pipeline.exec();
@@ -63,7 +63,7 @@ export class Metrics {
      * @param prefix - export prefix
      * @returns metrics as string
      */
-    public async getPrometheusMetrics(groupNames: string[], prefix: string = 'redis_highway_queue'): Promise<string> {
+    public async getPrometheusMetrics(groupNames: string[], prefix: string = 'redis_highway_queue', current: boolean = false): Promise<string> {
         const pipeline = this.redis.pipeline();
 
         pipeline.xlen(this.streamName);
@@ -71,7 +71,7 @@ export class Metrics {
 
         const timestamp = Date.now();
         groupNames.forEach(group => {
-            pipeline.get(this.keys.getThroughputKey(group, timestamp));
+            pipeline.get(this.keys.getThroughputKey(group, timestamp, current));
             pipeline.get(this.keys.getTotalKey(group));
             pipeline.get(this.keys.getRetriesKey(group, timestamp))
         });

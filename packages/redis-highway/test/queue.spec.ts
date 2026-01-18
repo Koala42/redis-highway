@@ -207,14 +207,14 @@ describe('Redis Queue Integration', () => {
             workers.push(w);
             await w.start();
 
-            let metrics = await metricsService.getMetrics(['group-Metrics']);
+            let metrics = await metricsService.getMetrics(['group-Metrics'], true);
             expect(metrics.dlqLength).toBe(0);
 
             const id = await producer.push({ id: 'metrics-1' }, ['group-Metrics']);
 
             await waitFor(() => w.processedCount === 1);
 
-            metrics = await metricsService.getMetrics(['group-Metrics']);
+            metrics = await metricsService.getMetrics(['group-Metrics'], true);
             expect(metrics.throughput['group-Metrics']).toBeGreaterThanOrEqual(1);
 
             w.shouldFail = true;
@@ -223,7 +223,7 @@ describe('Redis Queue Integration', () => {
 
             await waitFor(() => redis.xlen(`${streamName}:dlq`).then(len => len > 0));
 
-            metrics = await metricsService.getMetrics(['group-Metrics']);
+            metrics = await metricsService.getMetrics(['group-Metrics'], true);
             expect(metrics.dlqLength).toBe(1);
         });
 
@@ -239,15 +239,16 @@ describe('Redis Queue Integration', () => {
 
             await waitFor(() => w.processedCount === 2);
 
-            const promOutput = await metricsService.getPrometheusMetrics(['group-Prom']);
+            const prefix = `test_prefix`
+            const promOutput = await metricsService.getPrometheusMetrics(['group-Prom'], prefix, true);
 
-            expect(promOutput).toContain(`# TYPE redis_highway_queue_throughput_1m gauge`);
-            expect(promOutput).toContain(`redis_highway_queue_throughput_1m{stream="${streamName}", group="group-Prom"} 2`);
+            expect(promOutput).toContain(`# TYPE ${prefix}_throughput_1m gauge`);
+            expect(promOutput).toContain(`${prefix}_throughput_1m{stream="${streamName}", group="group-Prom"} 2`);
 
-            expect(promOutput).toContain(`# TYPE redis_highway_queue_jobs_total counter`);
-            expect(promOutput).toContain(`redis_highway_queue_jobs_total{stream="${streamName}", group="group-Prom"} 2`);
+            expect(promOutput).toContain(`# TYPE ${prefix}_jobs_total counter`);
+            expect(promOutput).toContain(`${prefix}_jobs_total{stream="${streamName}", group="group-Prom"} 2`);
 
-            expect(promOutput).toContain(`# TYPE redis_highway_queue_waiting_jobs gauge`);
+            expect(promOutput).toContain(`# TYPE ${prefix}_waiting_jobs gauge`);
         });
     });
 
