@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {
@@ -14,7 +14,7 @@
   },
   "type": "commonjs",
   "main": "dist/index.js",
-  "types": "dist/ndex.d.ts",
+  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
