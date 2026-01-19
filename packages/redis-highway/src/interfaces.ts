@@ -10,6 +10,12 @@ export interface BaseWorkerOptions {
   concurrency: number;
 }
 
+export interface DlqWorkerOptions {
+  streamName: string;
+  blockTimeoutMs?: number; // Defaults to 5 seconds (5_000)
+  waitTimeoutMs?: number; // Defaults to 5 seconds (5_000)
+}
+
 export interface BaseWorkerControlOptions {
   maxRetries: number;
   blockTimeMs: number;

@@ -92,6 +92,57 @@ const batchWorker = new MyBatchWorker(
 await batchWorker.start();
 ```
 
+### DLQ Worker
+Process messages from the Dead Letter Queue. Use this to handle jobs that have exhausted all retries.
+
+**Important:** DLQ Worker has no built-in error handling or retry policy. If `process()` throws an error, the message is lost. This is by design - DLQ processing is meant for manual intervention, logging, or forwarding to external systems.
+
+```typescript
+import { Redis } from 'ioredis';
+import { DlqWorker, DlqMessageEntity } from '@koala42/redis-highway';
+
+class MyDlqWorker extends DlqWorker<{hello: string}> {
+  async process(message: DlqMessageEntity<{hello: string}>) {
+    console.log('Failed job data:', message.data);
+    console.log('Original error:', message.errorMessage);
+    console.log('Failed at:', new Date(message.failedAt));
+    console.log('Original consumer group:', message.group);
+
+    // Example: Log to external system, send alert, or store for manual review
+    await externalLogger.log(message);
+  }
+}
+
+const redis = new Redis();
+const dlqWorker = new MyDlqWorker(redis, {
+  streamName: 'my-stream' // Must match your main worker's stream
+});
+
+await dlqWorker.start();
+
+// To stop gracefully
+// await dlqWorker.stop();
+```
+
+#### DLQ Worker Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `streamName` | string | - | **Required**. The Redis stream key (same as your main workers). |
+| `blockTimeoutMs` | number | 5000 | Redis XREADGROUP block duration in milliseconds. |
+| `waitTimeoutMs` | number | 5000 | Wait time between processing cycles when no messages are available. |
+
+#### DlqMessageEntity Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `data` | T | The original job payload. |
+| `errorMessage` | string | The error message from the last failed attempt. |
+| `failedAt` | number | Unix timestamp when the job was moved to DLQ. |
+| `group` | string | The consumer group that failed to process this job. |
+| `messageUuid` | string | The original job's unique identifier. |
+| `streamMessageId` | string | The Redis stream message ID. |
+
 ### Metrics
 
 ```typescript

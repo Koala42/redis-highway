@@ -48,4 +48,13 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
   get retryCount(): number {
     return this._retryCount
   }
+
+  public static getStreamFields(id: string, target: string | string[], serializedPayload: string, retryCount?: number): (string | number)[]{
+    const fields: (string | number)[] = ['id', id, 'target', Array.isArray(target) ? target.join(',') : target, 'data', serializedPayload]
+    if(retryCount !== undefined){
+      fields.push('retryCount', retryCount)
+    }
+
+    return fields
+  }
 }
