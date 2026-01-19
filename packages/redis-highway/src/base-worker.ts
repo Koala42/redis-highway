@@ -5,6 +5,7 @@ import Redis from "ioredis";
 import { BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BaseWorkerOptions, StreamMessage, XReadGroupResponse } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import { LUA_FINALIZE, LUA_FINALIZE_CUSTOM_METRIC } from "./lua";
+import { DlqMessageEntity } from "./dlq-message-entity";
 
 export abstract class BaseWorker<T extends Record<string, unknown>> {
   protected _isRunning = false;
@@ -67,8 +68,8 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
       }
     }
 
-    this._fetchLoop()
-    this._autoClaimLoop()
+    this._fetchLoop().catch((e) => console.error("Fetch loop crashed", e))
+    this._autoClaimLoop().catch((e) => console.error('Auto claim loop crashed', e))
   }
 
   /**
@@ -86,6 +87,8 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
     while (this._activeCount > 0) {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
+
+    await this.redis.xgroup('DELCONSUMER', this._streamName, this._groupName, this._consumerName).catch()
   }
 
   /**
@@ -159,10 +162,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
         pipeline.xadd(
           this._streamName,
           '*',
-          'id', newJobId,
-          'target', this._groupName,
-          'retryCount', message.retryCount + 1,
-          'data', message.serializedData
+          ...StreamMessageEntity.getStreamFields(newJobId, this._groupName, message.serializedData, message.retryCount + 1)
         );
 
         const newStatusKey = this._keys.getJobStatusKey(newJobId);
@@ -183,11 +183,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
         pipeline.xadd(
           this._keys.getDlqStreamKey(),
           '*',
-          'id', message.messageUuid,
-          'group', this._groupName,
-          'error', errorMessage,
-          'payload', message.serializedData,
-          'failedAt', timestamp
+          ...DlqMessageEntity.getStreamFields(message.messageUuid, this._groupName, errorMessage, message.serializedData, timestamp)
         )
 
         const statusKey = this._keys.getJobStatusKey(message.messageUuid)

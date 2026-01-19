@@ -50,11 +50,30 @@ const worker = new MyBatchWorker(redis, {
     streamName: 'my-stream',
     concurrency: 50,
     batchSize: 100,
-    maxFetchCount: 1000 
+    maxFetchCount: 1000
 });
 
 await worker.start();`;
 
+  const dlqWorkerCode = `import { Redis } from 'ioredis';
+import { DlqWorker, DlqMessageEntity } from '@koala42/redis-highway';
+
+class MyDlqWorker extends DlqWorker<T> {
+  async process(message: DlqMessageEntity<T>) {
+    console.log('Failed job:', message.data);
+    console.log('Error:', message.errorMessage);
+    // Log to external system, send alert, etc.
+  }
+}
+
+const redis = new Redis();
+const dlqWorker = new MyDlqWorker(redis, {
+  streamName: 'my-stream',
+  blockTimeoutMs: 5000,  // Optional
+  waitTimeoutMs: 5000    // Optional
+});
+
+await dlqWorker.start();`;
 
   const nestJsCode = `// Producer
 @Injectable()
@@ -136,6 +155,21 @@ const payload = await metrics.getPrometheusMetrics(['group-A']);`;
                   Batch Worker processes multiple messages at once for higher throughput (e.g., bulk database inserts).
                 </p>
                 <CodeBlock code={batchWorkerCode} />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium mb-4 text-white">DLQ Worker</h3>
+                <p className="text-muted-foreground mb-4 text-sm">
+                  Process messages from the Dead Letter Queue. Use this to handle jobs that have exhausted all retries.
+                </p>
+                <div className="mb-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                  <p className="text-yellow-400 text-sm">
+                    <strong>Warning:</strong> DLQ Worker has no built-in error handling or retry policy.
+                    If <code className="bg-white/10 px-1 rounded">process()</code> throws an error, the message is lost.
+                    This is by design - DLQ processing is meant for manual intervention, logging, or forwarding to external systems.
+                  </p>
+                </div>
+                <CodeBlock code={dlqWorkerCode} />
               </div>
             </div>
           </section>
@@ -240,6 +274,45 @@ const payload = await metrics.getPrometheusMetrics(['group-A']);`;
                         <td className="px-6 py-4 text-blue-400">number</td>
                         <td className="px-6 py-4 text-gray-500">-</td>
                         <td className="px-6 py-4 text-gray-400">Max items to fetch from Redis per cycle (should be greater than batchSize).</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold mb-4 text-white">DLQ Worker Options</h3>
+                <p className="text-muted-foreground mb-4">
+                  Configuration for `DlqWorker`. Note: DLQ Worker has no retry policy - if processing fails, the message is lost.
+                </p>
+                <div className="overflow-x-auto border border-white/10 rounded-xl">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs uppercase bg-white/5 text-muted-foreground">
+                      <tr>
+                        <th className="px-6 py-3">Option</th>
+                        <th className="px-6 py-3">Type</th>
+                        <th className="px-6 py-3">Default</th>
+                        <th className="px-6 py-3">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 bg-[#0d0d0d]">
+                      <tr>
+                        <td className="px-6 py-4 font-mono text-white">streamName</td>
+                        <td className="px-6 py-4 text-blue-400">string</td>
+                        <td className="px-6 py-4 text-gray-500">-</td>
+                        <td className="px-6 py-4 text-gray-400">Required. The Redis stream key (same as your main workers).</td>
+                      </tr>
+                      <tr>
+                        <td className="px-6 py-4 font-mono text-white">blockTimeoutMs</td>
+                        <td className="px-6 py-4 text-blue-400">number</td>
+                        <td className="px-6 py-4 text-gray-500">5000</td>
+                        <td className="px-6 py-4 text-gray-400">Redis XREADGROUP block duration in milliseconds.</td>
+                      </tr>
+                      <tr>
+                        <td className="px-6 py-4 font-mono text-white">waitTimeoutMs</td>
+                        <td className="px-6 py-4 text-blue-400">number</td>
+                        <td className="px-6 py-4 text-gray-500">5000</td>
+                        <td className="px-6 py-4 text-gray-400">Wait time between cycles when no messages are available.</td>
                       </tr>
                     </tbody>
                   </table>

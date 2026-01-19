@@ -1,10 +1,10 @@
 import { Redis, Pipeline } from 'ioredis'
 import { v7 as uuidv7 } from 'uuid'
 import { KeyManager } from './keys'
+import { StreamMessageEntity } from './stream-message-entity';
 
 export interface JobOptions {
   ttl?: number | null;
-  streamName?: string;
 }
 
 
@@ -25,13 +25,12 @@ export class Producer<T extends Record<string, unknown>> {
   async push(payload: T, targetGroups: string[], opts?: JobOptions): Promise<string> {
     const serializedPayload = JSON.stringify(payload)
     const id = uuidv7()
-    const ttl = opts?.ttl || null; // 24 hours in seconds
+    const ttl = opts?.ttl || null; // Defaults to null, no expiry
 
     const pipeline = this.redis.pipeline()
     const statusKey = this.keys.getJobStatusKey(id);
 
     // Initialize job metadata - status
-    // TODO: improve target groups use groups join by "," instead of groups length
     pipeline.hset(statusKey, '__target', targetGroups.length)
     if (ttl) {
       pipeline.expire(statusKey, ttl)
@@ -41,12 +40,7 @@ export class Producer<T extends Record<string, unknown>> {
     pipeline.xadd(
       this.streamName,
       '*',
-      'id',
-      id,
-      'target',
-      targetGroups.join(','),
-      'data',
-      serializedPayload
+      ...StreamMessageEntity.getStreamFields(id, targetGroups, serializedPayload)
     )
 
     await pipeline.exec()
