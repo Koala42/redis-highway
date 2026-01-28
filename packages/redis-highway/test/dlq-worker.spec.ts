@@ -94,7 +94,7 @@ describe('DLQ Worker Integration', () => {
     beforeEach(() => {
         redis = new Redis(REDIS_URL);
         streamName = `test-dlq-${uuidv7()}`;
-        producer = new Producer(redis, streamName);
+        producer = new Producer(redis, {streamName, compression: false});
     });
 
     afterEach(async () => {

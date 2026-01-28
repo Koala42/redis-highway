@@ -1,4 +1,5 @@
 import { StreamMessage } from "./interfaces";
+import { Serializer } from "./serializer";
 
 export class StreamMessageEntity<T extends Record<string, unknown>> {
   private readonly _streamMessageId: string; // Redis Stream message ID
@@ -8,6 +9,7 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
   private readonly _messageUuid: string; // Custom ID for referencing status hash obj
   private readonly _retryCount: number;
   private readonly _data: T;
+  private readonly _compressed: boolean;
   private readonly _rawData: string;
 
   constructor(message: StreamMessage) {
@@ -21,7 +23,8 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
     this._messageUuid = this._fields['id'];
     this._routes = this._fields['target'].split(',')
     this._retryCount = parseInt(this._fields['retryCount'] || '0', 10)
-    this._data = JSON.parse(this._fields['data'])
+    this._compressed = this._fields['zstd'] === 'true'
+    this._data = this._compressed ? Serializer.decompressPayloadSync(this._fields['data']) : JSON.parse(this._fields['data'])
     this._rawData = this._fields['data']
   }
 
@@ -31,6 +34,10 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
 
   get serializedData(): string {
     return this._rawData
+  }
+
+  get compressed(): boolean {
+    return this._compressed
   }
 
   get streamMessageId(): string {
@@ -49,10 +56,13 @@ export class StreamMessageEntity<T extends Record<string, unknown>> {
     return this._retryCount
   }
 
-  public static getStreamFields(id: string, target: string | string[], serializedPayload: string, retryCount?: number): (string | number)[]{
+  public static getStreamFields(id: string, target: string | string[], serializedPayload: string, compression: boolean, retryCount?: number): (string | number)[]{
     const fields: (string | number)[] = ['id', id, 'target', Array.isArray(target) ? target.join(',') : target, 'data', serializedPayload]
     if(retryCount !== undefined){
       fields.push('retryCount', retryCount)
+    }
+    if (compression) {
+      fields.push('zstd', 'true')
     }
 
     return fields

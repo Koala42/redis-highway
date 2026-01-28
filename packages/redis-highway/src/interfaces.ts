@@ -44,3 +44,9 @@ export interface BatchWorkerOptions extends BaseWorkerOptions {
   batchSize: number;
   maxFetchCount: number
 }
+
+
+export interface ProducerOptions {
+  streamName: string;
+  compression: boolean;
+}
