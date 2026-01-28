@@ -77,7 +77,7 @@ describe('Batch Worker Integration', () => {
         redisWorker = new Redis(REDIS_URL);
 
         streamName = `test-batch-queue-${uuidv7()}`;
-        producer = new Producer(redisProducer, streamName);
+        producer = new Producer(redisProducer, {streamName, compression: false});
     });
 
     afterEach(async () => {
