@@ -9,6 +9,7 @@ Designed for high throughput and massive concurrency with low overhead.
 - **Granular Retries**: Consumer group isolation - if one group fails, only that group retries.
 - **Reliability**: Auto-claiming of stuck messages (crashed consumers) and Dead Letter Queue (DLQ) support.
 - **Metrics**: Built-in tracking for throughput, queue depth, DLQ size, and retries. Prometheus export ready.
+- **ZSTD Compression**: Optional payload compression using Node.js built-in ZSTD. Workers auto-detect compressed messages.
 
 ## Installation
 
@@ -25,7 +26,10 @@ import { Redis } from 'ioredis';
 import { Producer } from '@koala42/redis-highway';
 
 const redis = new Redis();
-const producer = new Producer<{hello: string}>(redis, 'my-stream');
+const producer = new Producer<{hello: string}>(redis, {
+  streamName: 'my-stream',
+  compression: false // Set to true to enable ZSTD compression
+});
 
 // Send job
 await producer.push(
@@ -158,6 +162,26 @@ console.log(stats.throughput);
 const promMetrics = await metrics.getPrometheusMetrics(['group-A'], 'my_app_queue');
 ```
 
+### Compression
+
+Enable ZSTD compression to reduce Redis memory usage and network bandwidth for large payloads.
+
+```typescript
+const producer = new Producer<{hello: string}>(redis, {
+  streamName: 'my-stream',
+  compression: true // Enable ZSTD compression
+});
+
+// Messages are automatically compressed before being sent to Redis
+await producer.push({ hello: 'world' }, ['group-A']);
+```
+
+**Key points:**
+- Compression uses Node.js built-in ZSTD (no external dependencies required, Node.js 22+)
+- Workers automatically detect and decompress compressed messages
+- No configuration changes needed on workers - they handle both compressed and uncompressed messages
+- Recommended for payloads larger than 1KB where compression benefits outweigh CPU overhead
+
 ## Configuration
 
 ### Worker Options
@@ -201,7 +225,10 @@ export class EntryService {
   private readonly producer: Producer<MyPayload>;
 
   constructor(@InjectRedis() private readonly redis: Redis) {
-    this.producer = new Producer(this.redis, 'my-stream');
+    this.producer = new Producer(this.redis, {
+      streamName: 'my-stream',
+      compression: false
+    });
   }
 
   async addToQueue(data: MyPayload) {
