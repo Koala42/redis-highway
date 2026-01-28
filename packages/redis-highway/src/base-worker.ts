@@ -162,7 +162,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
         pipeline.xadd(
           this._streamName,
           '*',
-          ...StreamMessageEntity.getStreamFields(newJobId, this._groupName, message.serializedData, message.retryCount + 1)
+          ...StreamMessageEntity.getStreamFields(newJobId, this._groupName, message.serializedData, message.compressed, message.retryCount + 1)
         );
 
         const newStatusKey = this._keys.getJobStatusKey(newJobId);

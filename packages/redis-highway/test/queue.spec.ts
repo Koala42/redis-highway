@@ -32,7 +32,8 @@ class TestWorker extends Worker<JobData> {
             {
                 groupName,
                 streamName,
-                concurrency
+              concurrency,
+
             },
             {
                 maxRetries,
@@ -80,7 +81,10 @@ describe('Redis Queue Integration', () => {
     beforeEach(() => {
         redis = new Redis(REDIS_URL);
         streamName = `test-queue-${uuidv7()}`;
-        producer = new Producer(redis, streamName);
+        producer = new Producer(redis, {
+          streamName,
+          compression: false
+        });
         workers = [];
     });
 

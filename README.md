@@ -10,6 +10,7 @@ The core library offering:
 - **Consumer Groups**: Efficient load distribution and isolated retries.
 - **Reliability**: Auto-claim for crash recovery and Dead Letter Queue (DLQ).
 - **Observability**: Built-in Prometheus metrics.
+- **ZSTD Compression**: Optional payload compression with automatic worker detection.
 
 [View full documentation](./packages/redis-highway/README.md)
 
