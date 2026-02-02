@@ -1,8 +1,7 @@
-import { Redis, Pipeline } from 'ioredis'
 import { v7 as uuidv7 } from 'uuid'
 import { KeyManager } from './keys'
 import { StreamMessageEntity } from './stream-message-entity';
-import { ProducerOptions } from './interfaces';
+import { ProducerOptions, RedisClient } from './interfaces';
 import { Serializer } from './serializer';
 
 export interface JobOptions {
@@ -12,11 +11,11 @@ export interface JobOptions {
 
 export class Producer<T extends Record<string, unknown>> {
   private readonly _keys: KeyManager;
-  private readonly _redis: Redis;
+  private readonly _redis: RedisClient;
   private readonly _streamName: string;
   private readonly _compression: boolean;
 
-  constructor(redis: Redis, options: ProducerOptions) {
+  constructor(redis: RedisClient, options: ProducerOptions) {
     this._redis = redis;
     this._streamName = options.streamName
     this._keys = new KeyManager(this._streamName);

@@ -1,12 +1,11 @@
-import Redis from "ioredis";
-import { StreamMessage, BaseWorkerOptions, BaseWorkerControlOptions, defaultBaseWorkerControlOptions, defaultBaseWorkerCustomMetrics, BaseWorkerCustomMetricsOptions } from "./interfaces";
+import { StreamMessage, BaseWorkerOptions, BaseWorkerControlOptions, defaultBaseWorkerControlOptions, defaultBaseWorkerCustomMetrics, BaseWorkerCustomMetricsOptions, RedisClient } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import { BaseWorker } from "./base-worker";
 
 export abstract class Worker<T extends Record<string, unknown>> extends BaseWorker<T> {
 
   constructor(
-    redis: Redis,
+    redis: RedisClient,
     options: BaseWorkerOptions,
     controlOptions: BaseWorkerControlOptions = defaultBaseWorkerControlOptions,
     metricsOptions: BaseWorkerCustomMetricsOptions<T> = defaultBaseWorkerCustomMetrics

@@ -1,6 +1,6 @@
 {
   "name": "@koala42/redis-highway",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "High performance redis queue",
   "license": "MIT",
   "author": {

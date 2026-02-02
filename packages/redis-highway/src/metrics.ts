@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis';
+import { RedisClient } from './interfaces';
 import { KeyManager } from './keys';
 
 export interface QueueMetrics {
@@ -10,7 +10,7 @@ export interface QueueMetrics {
 export class Metrics {
     private keys: KeyManager;
 
-    constructor(private readonly redis: Redis, private readonly streamName: string) {
+    constructor(private readonly redis: RedisClient, private readonly streamName: string) {
         this.keys = new KeyManager(streamName);
     }
 

@@ -1,8 +1,10 @@
-import { ChainableCommander } from "ioredis";
+import Redis, {Cluster} from "ioredis";
 
 export type StreamMessage = [string, string[]];
 export type XReadGroupResponse = [string, StreamMessage[]][];
 
+
+export type RedisClient = Redis | Cluster
 
 export interface BaseWorkerOptions {
   groupName: string;

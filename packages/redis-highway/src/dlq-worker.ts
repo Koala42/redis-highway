@@ -1,6 +1,5 @@
-import Redis from "ioredis";
 import { KeyManager } from "./keys";
-import { DlqWorkerOptions, XReadGroupResponse } from "./interfaces";
+import { DlqWorkerOptions, RedisClient, XReadGroupResponse } from "./interfaces";
 import {v7 as uuidv7} from 'uuid'
 import { DlqMessageEntity } from "./dlq-message-entity";
 
@@ -16,7 +15,7 @@ export abstract class DlqWorker<T extends Record<string, unknown>> {
   protected readonly _blockTimeoutMs: number;
   protected readonly _waitTimeoutMs: number;
 
-  constructor(protected readonly _redis: Redis, options: DlqWorkerOptions){
+  constructor(protected readonly _redis: RedisClient, options: DlqWorkerOptions){
     this._keys = new KeyManager(options.streamName)
     this._dlqStreamName = this._keys.getDlqStreamKey()
     this._blockTimeoutMs = options.blockTimeoutMs ?? 5_000;

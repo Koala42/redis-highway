@@ -1,8 +1,7 @@
 import { EventEmitter } from "events";
 import { KeyManager } from "./keys";
 import { v7 as uuidv7 } from 'uuid'
-import Redis from "ioredis";
-import { BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BaseWorkerOptions, StreamMessage, XReadGroupResponse } from "./interfaces";
+import { BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BaseWorkerOptions, RedisClient, StreamMessage, XReadGroupResponse } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import { LUA_FINALIZE, LUA_FINALIZE_CUSTOM_METRIC } from "./lua";
 import { DlqMessageEntity } from "./dlq-message-entity";
@@ -14,7 +13,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
   protected readonly _events = new EventEmitter()
   protected readonly _keys: KeyManager;
   protected readonly _consumerId = uuidv7()
-  protected _blockingRedis: Redis
+  protected _blockingRedis: RedisClient
 
   protected readonly _groupName: string;
   protected readonly _streamName: string;
@@ -28,7 +27,7 @@ export abstract class BaseWorker<T extends Record<string, unknown>> {
 
 
   constructor(
-    protected redis: Redis,
+    protected redis: RedisClient,
     options: BaseWorkerOptions,
     controlOptions: BaseWorkerControlOptions,
     metricsOptions: BaseWorkerCustomMetricsOptions<T>

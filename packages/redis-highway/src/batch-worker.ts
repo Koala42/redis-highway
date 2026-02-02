@@ -1,5 +1,4 @@
-import Redis from "ioredis";
-import {BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BatchWorkerOptions, defaultBaseWorkerControlOptions, defaultBaseWorkerCustomMetrics, StreamMessage } from "./interfaces";
+import {BaseWorkerControlOptions, BaseWorkerCustomMetricsOptions, BatchWorkerOptions, defaultBaseWorkerControlOptions, defaultBaseWorkerCustomMetrics, RedisClient, StreamMessage } from "./interfaces";
 import { StreamMessageEntity } from "./stream-message-entity";
 import { BaseWorker } from "./base-worker";
 
@@ -8,7 +7,7 @@ export abstract class BatchWorker<T extends Record<string, unknown>> extends Bas
   private readonly _maxFetchCount: number;
 
   constructor(
-    redis: Redis,
+    redis: RedisClient,
     options: BatchWorkerOptions,
     controlOptions: BaseWorkerControlOptions = defaultBaseWorkerControlOptions,
     metricsOptions: BaseWorkerCustomMetricsOptions<T> = defaultBaseWorkerCustomMetrics
